@@ -1,13 +1,32 @@
 # Pixen
 
 A modern, minimal, local-first paint app in the spirit of the classic
-Windows Paint — rebuilt for 2026. Python 3.12 + PySide6/Qt.
-No AI, no cloud, no accounts, no telemetry, no bloat.
+Windows Paint — rebuilt for 2026. Python 3.12 + PySide6/Qt. Runs
+natively on Windows, Linux, and macOS (Intel + Apple Silicon) from one
+codebase. No AI, no cloud, no accounts, no telemetry, no bloat.
 
 Philosophy: open → create a canvas → draw. Every feature exists for a
 clear reason; this is not trying to become Photoshop.
 
-## Quick start
+## Download
+
+Pre-built, no-Python-required downloads are published on the
+[**GitHub Releases**](../../releases) page of this repository for
+every tagged version:
+
+| Platform | File |
+|---|---|
+| Windows x64 (installer) | `Pixen-Setup.exe` |
+| Windows x64 (portable, no install) | `Pixen-Windows-x64-Portable.zip` |
+| Linux x86_64 | `Pixen-Linux-x86_64.AppImage` |
+| macOS — Apple Silicon | `Pixen-macOS-arm64.dmg` |
+
+(No pre-built Intel macOS `.dmg` — see "Building & releasing" below.)
+
+Go to **[Releases → latest](../../releases/latest)** and download the
+file for your system. No other download source is official.
+
+## Quick start (running from source)
 
 ```bash
 python -m venv .venv
@@ -83,6 +102,17 @@ minimal.
   `pyproject.toml` with real project metadata; `Pixen.spec` for
   PyInstaller builds on Windows/macOS/Linux; a Linux `.desktop` entry
   under `packaging/`.
+- **Cross-platform storage**: settings via `QSettings` (registry on
+  Windows, plist on macOS, config file on Linux); autosave and any
+  other per-user app data via `QStandardPaths` (`app/paths.py`) —
+  never inside the install folder, so it works without admin/root.
+- **Distribution**: single-source `__version__` (`app/__init__.py`)
+  driving the app, `pyproject.toml`, and packaged builds; Windows
+  installer (Inno Setup) + portable ZIP; Linux AppImage; macOS DMGs
+  for both Apple Silicon and Intel, with `.icns` generated on the fly;
+  GitHub Actions builds all four on every version tag and publishes
+  them directly to this repo's Releases — see "Building &
+  releasing" below.
 
 ## Roadmap against the full spec
 
@@ -123,22 +153,30 @@ effort order, not priority — tell me which block to tackle next.
   exist; there's no UI to change bindings interactively yet).
 
 **Distribution**
-- `.icns` for macOS (Pillow can't build this format directly — the PNG
-  in `assets/icons/` is ready, see "Building a standalone executable"
-  below for the one-command macOS step) and a signed/notarized build.
-- A Windows installer (Inno Setup / MSIX) and a Linux AppImage/Flatpak,
-  built on top of the PyInstaller output.
+- Code signing / notarization for the macOS DMGs and a signed Windows
+  installer (neither is set up — unsigned builds will show an
+  OS "unknown publisher" warning on first launch; this needs a paid
+  certificate you'd provide as a repo secret, out of scope here).
+- `.deb` / `.rpm` packages for Linux (the AppImage covers all major
+  distros already; see spec section 20).
 
 None of this affects the "no AI, local-first, no accounts" requirements
 — those are fully respected throughout (nothing in the app calls out to
 a network service).
 
-**Note on testing**: written and syntax-checked (`py_compile`) in a
-sandboxed environment without a display server, GPU, or internet
-access, so PySide6 can't be installed here to do a full interactive
-runtime test. The code follows standard, well-established PySide6/Qt6
-APIs throughout, but please run it locally first and report/file any
-runtime issues you hit.
+**Note on testing**: this was written and verified in a sandboxed
+environment with no network access, so `pip install PySide6` (and
+therefore an actual interactive run of the app, or of the `tests/`
+suite) was not possible here — only `python -m compileall` (syntax/
+import-structure checking of every file) and manual code review. The
+GitHub Actions CI workflow (`.github/workflows/ci.yml`) runs the real
+test suite headlessly on Windows, Linux, and both macOS architectures
+on every push, and the release workflow does full PyInstaller builds
+on all four targets — but until those have actually run on GitHub (or
+you've run the app locally), nothing here should be taken as
+"confirmed working," only "should work, following standard PySide6/Qt6
+APIs throughout." Please push to a branch, let CI run, and try a local
+`python main.py` before trusting a release build.
 
 ## Project layout
 
@@ -147,9 +185,20 @@ pixen/
 ├── main.py
 ├── pyproject.toml
 ├── requirements.txt
-├── Pixen.spec              # PyInstaller build spec
+├── Pixen.spec                  # PyInstaller build spec (all 3 OSes)
+├── LICENSE
 ├── packaging/
-│   └── pixen.desktop        # Linux desktop entry
+│   └── pixen.desktop            # Linux desktop entry
+├── installer/
+│   ├── windows/pixen.iss         # Inno Setup script → Pixen-Setup.exe
+│   ├── macos/
+│   │   ├── make_icns.sh           # PNG → .icns (must run on macOS)
+│   │   └── build_dmg.sh           # .app → .dmg
+│   └── linux/build_appimage.sh    # PyInstaller output → .AppImage
+├── .github/workflows/
+│   ├── ci.yml                    # sanity build + tests, every push/PR
+│   └── release.yml                # tag push → build all 4 → GitHub Release
+├── tests/                        # pytest suite (see "Testing" below)
 ├── app/
 │   ├── ui/          # main window, toolbar, dialogs, panels, status bar
 │   ├── canvas/       # Document/Layer model, CanvasWidget, paper sizes
@@ -158,12 +207,30 @@ pixen/
 │   ├── files/        # open/save (raster formats + native .qpaint)
 │   ├── printing/      # QPrintSupport integration
 │   ├── settings/      # QSettings-backed preferences
-│   └── shortcuts/     # keymap defaults + overrides
+│   ├── shortcuts/     # keymap defaults + overrides
+│   └── paths.py        # asset resolution + per-OS data dir (QStandardPaths)
 └── assets/
-    └── icons/         # app icon (pixen.png / pixen.ico)
+    └── icons/         # app icon (pixen.png / pixen.ico / pixen.icns once built)
 ```
 
-## Building a standalone executable
+## Testing
+
+```bash
+pip install -r requirements.txt pytest
+python -m pytest
+```
+
+The suite (`tests/`) covers: every module imports cleanly, the main
+window constructs, document creation/layers/resize, native `.qpaint`
+and raster (PNG/JPG) open+save round-trips, `QSettings`/shortcuts
+persistence and reset, asset-path resolution, the per-OS data
+directory, clipboard image round-trip (skips itself gracefully if the
+headless environment has no real system clipboard), and that
+`requirements.txt` and `pyproject.toml` agree on dependencies. It
+needs `QT_QPA_PLATFORM=offscreen` to run without a display (`tests/conftest.py`
+sets this automatically if it isn't already set).
+
+## Building a standalone executable locally
 
 ```bash
 pip install pyinstaller
@@ -173,22 +240,75 @@ pyinstaller Pixen.spec
 This produces a folder build (`dist/Pixen/`, or `dist/Pixen.app` on
 macOS) rather than a single `--onefile` executable, so startup stays
 fast — a onefile build has to unpack itself into a temp directory on
-every launch. Flip `exclude_binaries`/wrap in `EXE(..., a.binaries, ...)`
-directly in `Pixen.spec` if a single distributable file matters more
-than launch speed for your release.
+every launch.
 
-**macOS icon**: Pillow (used by `generate_icon.py`) can produce `.ico`
-directly but not `.icns`. On a Mac, generate it once with:
+From there, build the platform-specific package:
+
+**Windows** — installer + portable zip:
+```powershell
+Compress-Archive -Path dist\Pixen -DestinationPath dist-installer\Pixen-Windows-x64-Portable.zip
+# Requires Inno Setup (https://jrsoftware.org/isinfo.php) installed:
+iscc installer\windows\pixen.iss /DPixenVersion=1.0.0
+```
+Produces `dist-installer\Pixen-Setup.exe` (lets the user pick install
+location, adds a Start Menu shortcut, uninstalls cleanly — no admin
+rights required, per-user install) and the portable zip.
+
+**Linux** — AppImage:
+```bash
+bash installer/linux/build_appimage.sh
+```
+Downloads `appimagetool` on first run (cached under
+`installer/linux/tools/`) and produces
+`dist-installer/Pixen-Linux-x86_64.AppImage`. No Python or install
+step needed on the target machine; works across Ubuntu, Debian, Mint,
+Fedora, Arch, Manjaro, openSUSE, Pop!_OS, etc.
+
+**macOS** — DMG (must run on an actual Mac; produces a DMG for
+whichever architecture you run it on):
+```bash
+bash installer/macos/make_icns.sh   # once, or whenever the icon changes
+pyinstaller Pixen.spec
+bash installer/macos/build_dmg.sh
+```
+Produces `dist-installer/Pixen-macOS-arm64.dmg` (Apple Silicon) or
+`Pixen-macOS-x86_64.dmg` (Intel), matching the Mac you built it on.
+
+Install the Linux `.desktop` file (`packaging/pixen.desktop`) manually
+only if you're not using the AppImage — e.g. for a `.deb`/`.rpm`,
+alongside `assets/icons/pixen.png` per your distro's icon theme path.
+
+## Releasing (GitHub Actions → GitHub Releases)
+
+Everything above also runs automatically in CI. The whole release
+process is:
 
 ```bash
-mkdir pixen.iconset
-# populate pixen.iconset/icon_16x16.png, icon_32x32.png, ... from assets/icons/pixen.png
-iconutil -c icns pixen.iconset -o assets/icons/pixen.icns
+git push origin main
+git tag v1.0.0
+git push origin v1.0.0
 ```
 
-`Pixen.spec` picks it up automatically once it exists.
+Pushing a `vX.Y.Z` tag triggers `.github/workflows/release.yml`, which:
 
-**Linux**: install the `.desktop` file from `packaging/pixen.desktop`
-alongside the built binary and `assets/icons/pixen.png` per your
-distro's icon theme path (e.g. `/usr/share/applications/` and
-`/usr/share/icons/hicolor/512x512/apps/`).
+1. Reads the version from the tag and writes it into `app/__init__.py`
+   (the single source of truth main.py, the About dialog, and
+   `Pixen.spec`'s macOS bundle version all read from) on each runner.
+2. Builds Windows (`windows-latest`), Linux (`ubuntu-latest`), and
+   macOS Apple Silicon (`macos-14`) in parallel, using the official
+   GitHub-hosted runners for each OS — you don't need to own a Mac or
+   a Linux box. (Intel macOS is deliberately not built in CI — GitHub's
+   hosted `macos-13` Intel runners have had multi-hour queue times; see
+   the comment at the top of `release.yml`. Build that `.dmg` locally
+   per the macOS instructions above if you need one.)
+3. Collects the four output files and publishes them directly to a new
+   **GitHub Release** for that tag (`softprops/action-gh-release`,
+   using the automatic `secrets.GITHUB_TOKEN` — no manual token setup,
+   no manual upload) with basic auto-generated release notes.
+
+Users then find the download on this repo's
+[**Releases**](../../releases) page — nothing is left sitting only as
+a GitHub Actions "Artifact" (those aren't linked from anywhere users
+would look, and expire after 90 days by default). Required repo
+setting: none beyond default — the workflow's `permissions: contents:
+write` is enough for `GITHUB_TOKEN` to create the Release.
