@@ -61,7 +61,9 @@ jobs:
         run: pyinstaller Pixen.spec
 
       - name: Create portable ZIP
-        run: Compress-Archive -Path dist\Pixen -DestinationPath dist-installer\Pixen-Windows-x64-Portable.zip
+        run: |
+          New-Item -ItemType Directory -Force -Path dist-installer | Out-Null
+          Compress-Archive -Path dist\Pixen -DestinationPath dist-installer\Pixen-Windows-x64-Portable.zip
         shell: pwsh
 
       - name: Install Inno Setup
