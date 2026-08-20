@@ -1,0 +1,46 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.eggs/
+build/
+dist/
+*.egg
+
+# Virtual environments
+.venv/
+venv/
+env/
+
+# PyInstaller
+*.manifest
+*.spec.bak
+
+# Packaging output
+installer/windows/*.exe
+installer/macos/*.dmg
+installer/macos/*.iconset/
+installer/linux/*.AppImage
+installer/linux/AppDir/
+release-assets/
+
+# Generated icon
+assets/icons/pixen.icns
+
+# OS cruft
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# Editors
+.vscode/
+.idea/
+*.swp
+
+# Pixen autosave/test artifacts
+*.qpaint.autosave
+
+# Test/coverage
+.pytest_cache/
+.coverage
+htmlcov/

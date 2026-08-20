@@ -1,0 +1,9 @@
+[Desktop Entry]
+Type=Application
+Name=Pixen
+Comment=A modern, minimal, local-first paint app
+Exec=Pixen
+Icon=pixen
+Terminal=false
+Categories=Graphics;2DGraphics;RasterGraphics;
+StartupWMClass=Pixen
