@@ -123,16 +123,9 @@ jobs:
           name: linux-build
           path: dist-installer/Pixen-Linux-x86_64.AppImage
 
-  build-macos:
+  build-macos-arm:
     needs: prepare
-    strategy:
-      matrix:
-        include:
-          - os: macos-13    # Intel (x86_64) runner
-            asset_name: Pixen-macOS-x86_64
-          - os: macos-14    # Apple Silicon (arm64) runner
-            asset_name: Pixen-macOS-arm64
-    runs-on: ${{ matrix.os }}
+    runs-on: macos-14   # Apple Silicon (arm64) runner
     steps:
       - uses: actions/checkout@v4
         with:
@@ -158,15 +151,71 @@ jobs:
         run: pyinstaller Pixen.spec
 
       - name: Build DMG
-        run: bash installer/macos/build_dmg.sh ${{ matrix.asset_name }}
+        run: bash installer/macos/build_dmg.sh Pixen-macOS-arm64
 
       - uses: actions/upload-artifact@v4
         with:
-          name: macos-build-${{ matrix.asset_name }}
-          path: dist-installer/${{ matrix.asset_name }}.dmg
+          name: macos-build-arm64
+          path: dist-installer/Pixen-macOS-arm64.dmg
+
+  # Intel macOS runners (macos-13) have been suffering long GitHub-side
+  # queue times (sometimes hours) as GitHub phases them out in favor of
+  # Apple Silicon. `continue-on-error: true` + a firm timeout means a
+  # stuck/queued Intel runner does NOT hold up the release: Windows,
+  # Linux, and the Apple Silicon DMG still publish on time. If this job
+  # times out or fails, re-run it individually later (Actions -> this
+  # run -> "Re-run failed jobs") and re-run publish-release afterwards;
+  # softprops/action-gh-release updates the existing release in place,
+  # adding the Intel DMG without touching what's already published.
+  build-macos-intel:
+    needs: prepare
+    runs-on: macos-13   # Intel (x86_64) runner
+    continue-on-error: true
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ needs.prepare.outputs.tag }}
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Set app version from tag
+        run: sed -i '' 's/__version__ = ".*"/__version__ = "${{ needs.prepare.outputs.version }}"/' app/__init__.py
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+          pip install pyinstaller
+
+      - name: Generate .icns app icon
+        run: bash installer/macos/make_icns.sh
+
+      - name: Build with PyInstaller
+        run: pyinstaller Pixen.spec
+
+      - name: Build DMG
+        run: bash installer/macos/build_dmg.sh Pixen-macOS-x86_64
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: macos-build-intel
+          path: dist-installer/Pixen-macOS-x86_64.dmg
 
   publish-release:
-    needs: [prepare, build-windows, build-linux, build-macos]
+    needs: [prepare, build-windows, build-linux, build-macos-arm, build-macos-intel]
+    # Publish as soon as Windows, Linux, and the Apple Silicon DMG are
+    # ready -- Intel's result is intentionally NOT required (see comment
+    # above build-macos-intel). If Intel also succeeded in time, its
+    # DMG is included automatically; if not, it just gets added to this
+    # same release later.
+    if: |
+      always() &&
+      needs.build-windows.result == 'success' &&
+      needs.build-linux.result == 'success' &&
+      needs.build-macos-arm.result == 'success'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/download-artifact@v4
@@ -197,10 +246,9 @@ jobs:
 
             **macOS**
             - `Pixen-macOS-arm64.dmg` — Apple Silicon (M1/M2/M3/...)
-            - `Pixen-macOS-x86_64.dmg` — Intel Macs
+            - `Pixen-macOS-x86_64.dmg` — Intel Macs (may be added shortly after the rest if GitHub's Intel runner queue was backed up)
           files: |
             artifacts/Pixen-Setup.exe
             artifacts/Pixen-Windows-x64-Portable.zip
             artifacts/Pixen-Linux-x86_64.AppImage
-            artifacts/Pixen-macOS-arm64.dmg
-            artifacts/Pixen-macOS-x86_64.dmg
+            artifacts/Pixen-macOS-*.dmg
