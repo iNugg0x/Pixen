@@ -8,6 +8,7 @@ codebase. No AI, no cloud, no accounts, no telemetry, no bloat.
 Philosophy: open → create a canvas → draw. Every feature exists for a
 clear reason; this is not trying to become Photoshop.
 
+ HEAD
 ## Download
 
 Pre-built, no-Python-required downloads are published on the
@@ -25,21 +26,6 @@ every tagged version:
 
 Go to **[Releases → latest](../../releases/latest)** and download the
 file for your system. No other download source is official.
-
-## Quick start (running from source)
-
-```bash
-python -m venv .venv
-.venv\Scripts\activate        # Windows
-# source .venv/bin/activate   # Linux/macOS
-
-pip install -r requirements.txt
-python main.py
-```
-
-Requirements: Python 3.12+, PySide6, NumPy (used only for the flood-fill
-tool's pixel buffer operations). Dependencies are kept intentionally
-minimal.
 
 ## What's implemented
 
